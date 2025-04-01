@@ -31,8 +31,6 @@ const saveRequest = async (request) => {
 
     const addRequest = store.add(request);
 
-    addRequest.onsuccess = () =>
-      console.log("Request stored successfully:", request);
     addRequest.onerror = (event) =>
       console.error("Failed to store request:", event.target.error);
   } catch (error) {
@@ -61,7 +59,6 @@ const sendStoredRequests = async () => {
         });
 
         store.delete(req.id);
-        console.log("Request retried and deleted:", req);
       } catch (error) {
         console.log("Retry failed, will try again later:", error);
       }
@@ -76,45 +73,52 @@ self.addEventListener("sync", (event) => {
   }
 });
 
+// Install event
+self.addEventListener("install", () => {
+  self.skipWaiting(); // Activate immediately
+});
+
+// Activate event
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+async function handleOfflineRequest(request) {
+  // Clone and store the failed request
+  const requestClone = {
+    url: request.url,
+    options: {
+      method: request.method,
+      headers: Object.fromEntries(request.headers),
+      body: request.method !== "GET" ? await request.clone().text() : null,
+    },
+  };
+
+  await saveRequest(requestClone);
+
+  // Register Background Sync
+  if ("SyncManager" in self) {
+    self.registration.sync
+      .register("sync-failed-requests")
+      .catch((err) =>
+        console.error("Failed to register background sync:", err)
+      );
+  }
+
+  return new Response(
+    JSON.stringify({
+      message: "Request stored offline. Will retry when online.",
+    }),
+    { status: 503, headers: { "Content-Type": "application/json" } }
+  );
+}
+
 // Fetch event listener to intercept API calls
 self.addEventListener("fetch", (event) => {
   if (API_URLS.some((url) => event.request.url.includes(url))) {
-    event.respondWith(
-      fetch(event.request).catch(async () => {
-        // Store the failed request when offline
-        const requestClone = {
-          url: event.request.url,
-          options: {
-            method: event.request.method,
-            headers: Object.fromEntries(event.request.headers),
-            body:
-              event.request.method !== "GET"
-                ? await event.request.clone().text()
-                : null,
-          },
-        };
-
-        await saveRequest(requestClone);
-
-        // Register Background Sync
-        if ("SyncManager" in self) {
-          self.registration.sync
-            .register("sync-failed-requests")
-            .then(() => {
-              console.log("Background sync registered");
-            })
-            .catch((err) => {
-              console.error("Failed to register background sync:", err);
-            });
-        }
-
-        return new Response(
-          JSON.stringify({
-            message: "Request stored offline. Will retry when online.",
-          }),
-          { status: 503, headers: { "Content-Type": "application/json" } }
-        );
-      })
-    );
+    if (!navigator.onLine) {
+      // Directly detect offline state and store the request
+      event.respondWith(handleOfflineRequest(event.request));
+    }
   }
 });
