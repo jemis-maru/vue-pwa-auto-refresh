@@ -1,4 +1,3 @@
-const CACHE_NAME = "app-cache-v1";
 const API_URLS = ["https://jsonplaceholder.typicode.com/posts"];
 const DB_NAME = "offline-requests";
 
@@ -58,7 +57,10 @@ const sendStoredRequests = async () => {
           });
         });
 
-        store.delete(req.id);
+        // Create a NEW transaction for deletion
+        const deleteTx = db.transaction("requests", "readwrite");
+        const deleteStore = deleteTx.objectStore("requests");
+        deleteStore.delete(req.id);
       } catch (error) {
         console.log("Retry failed, will try again later:", error);
       }
