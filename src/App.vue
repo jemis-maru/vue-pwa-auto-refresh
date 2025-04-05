@@ -1,9 +1,14 @@
 <template>
   <div class="app-container">
     <h1>Vue 3 PWA - Auto Retry Failed Requests</h1>
+
+    <!-- Button to trigger fetchPosts -->
     <button class="fetch-btn" @click="fetchPosts">Fetch Posts</button>
+
+    <!-- Display error message when offline -->
     <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
 
+    <!-- Render posts in a grid layout -->
     <div class="card-grid">
       <div class="card" v-for="post in posts" :key="post.id">
         <h2 class="card-title">{{ post.title }}</h2>
@@ -16,52 +21,66 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from "vue";
 
+// Reactive variable to store fetched posts
 const posts = ref([]);
+
+// Reactive variable to store error message
 const errorMsg = ref("");
 
-// Function to update error message based on online status
+// Function to update the error message based on online/offline status
 const updateNetworkStatus = () => {
   errorMsg.value = navigator.onLine
     ? ""
     : "You are offline. The request will be retried automatically.";
 };
 
+/**
+ * Fetch posts from API.
+ * If the fetch fails (e.g., offline), the service worker will handle and store the request.
+ */
 const fetchPosts = async () => {
-  updateNetworkStatus(); // Check network before request
+  updateNetworkStatus(); // Update message before attempting fetch
+
   try {
     const response = await fetch("https://jsonplaceholder.typicode.com/posts");
     if (!response.ok) throw new Error("Failed to fetch data");
+
+    // Update posts on success
     posts.value = await response.json();
   } catch (error) {
+    // No errorMsg is set here, because updateNetworkStatus already does that
     console.log(error);
   }
 };
 
-// Listen for messages from the service worker
+// Lifecycle hook: runs when component is mounted
 onMounted(() => {
-  // Set initial status
+  // Set initial network status
   updateNetworkStatus();
 
-  // Add online/offline listeners
+  // Listen for network status changes
   window.addEventListener("online", updateNetworkStatus);
   window.addEventListener("offline", updateNetworkStatus);
 
+  // Listen for messages from the service worker
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", (event) => {
+      // Check if message is a successful retry response
       if (event.data?.type === "RETRY_SUCCESS") {
-        posts.value = event.data.data; // Update posts with retried data
+        posts.value = event.data.data; // Update posts with data from retry
       }
     });
   }
 });
 
+// Lifecycle hook: clean up event listeners when component unmounts
 onBeforeUnmount(() => {
-  // Clean up listeners
   window.removeEventListener("online", updateNetworkStatus);
   window.removeEventListener("offline", updateNetworkStatus);
 });
 </script>
 
+<!-- Css code -->
 <style scoped>
 .app-container {
   max-width: 1200px;

@@ -1,7 +1,13 @@
+// List of API URLs to intercept and handle offline requests
 const API_URLS = ["https://jsonplaceholder.typicode.com/posts"];
+
+// Name of the IndexedDB database
 const DB_NAME = "offline-requests";
 
-// Open IndexedDB for storing failed requests
+/**
+ * Open or create the IndexedDB database.
+ * Used to store failed requests for retrying later.
+ */
 const openDB = () => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
@@ -9,6 +15,7 @@ const openDB = () => {
     request.onerror = () => reject("Failed to open IndexedDB");
     request.onsuccess = () => resolve(request.result);
 
+    // Create the "requests" object store if it doesn't exist
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
       if (!db.objectStoreNames.contains("requests")) {
@@ -21,7 +28,10 @@ const openDB = () => {
   });
 };
 
-// Save request in IndexedDB when offline
+/**
+ * Save a failed request in IndexedDB when the user is offline.
+ * @param {Object} request - The request object containing URL and fetch options.
+ */
 const saveRequest = async (request) => {
   try {
     const db = await openDB();
@@ -37,27 +47,33 @@ const saveRequest = async (request) => {
   }
 };
 
-// Send stored requests when online
+/**
+ * Retry sending all previously failed requests stored in IndexedDB.
+ * Called when the Background Sync event is triggered.
+ */
 const sendStoredRequests = async () => {
   const db = await openDB();
   const transaction = db.transaction("requests", "readwrite");
   const store = transaction.objectStore("requests");
 
+  // Retrieve all stored requests
   store.getAll().onsuccess = async (event) => {
     const requests = event.target.result;
+
     for (const req of requests) {
       try {
+        // Attempt to resend the request
         const response = await fetch(req.url, req.options);
         const responseData = await response.json();
 
-        // Send message to Vue app
+        // Inform the client (e.g., Vue app) of a successful retry
         self.clients.matchAll().then((clients) => {
           clients.forEach((client) => {
             client.postMessage({ type: "RETRY_SUCCESS", data: responseData });
           });
         });
 
-        // Create a NEW transaction for deletion
+        // Remove the request from IndexedDB after successful retry
         const deleteTx = db.transaction("requests", "readwrite");
         const deleteStore = deleteTx.objectStore("requests");
         deleteStore.delete(req.id);
@@ -68,25 +84,38 @@ const sendStoredRequests = async () => {
   };
 };
 
-// Background Sync event listener
+/**
+ * Background Sync event listener.
+ * Triggers the retry of stored requests when the device is back online.
+ */
 self.addEventListener("sync", (event) => {
   if (event.tag === "sync-failed-requests") {
     event.waitUntil(sendStoredRequests());
   }
 });
 
-// Install event
+/**
+ * Service worker install event.
+ * Skips waiting and activates the new worker immediately.
+ */
 self.addEventListener("install", () => {
-  self.skipWaiting(); // Activate immediately
+  self.skipWaiting();
 });
 
-// Activate event
+/**
+ * Service worker activate event.
+ * Takes control of uncontrolled clients immediately.
+ */
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+/**
+ * Handle a fetch request when the user is offline.
+ * Saves the request for later retry and responds with a fallback message.
+ * @param {Request} request - The failed fetch request.
+ */
 async function handleOfflineRequest(request) {
-  // Clone and store the failed request
   const requestClone = {
     url: request.url,
     options: {
@@ -96,9 +125,10 @@ async function handleOfflineRequest(request) {
     },
   };
 
+  // Save the failed request to IndexedDB
   await saveRequest(requestClone);
 
-  // Register Background Sync
+  // Register Background Sync to retry the request later
   if ("SyncManager" in self) {
     self.registration.sync
       .register("sync-failed-requests")
@@ -107,6 +137,7 @@ async function handleOfflineRequest(request) {
       );
   }
 
+  // Respond to the client immediately with an offline notice
   return new Response(
     JSON.stringify({
       message: "Request stored offline. Will retry when online.",
@@ -115,11 +146,14 @@ async function handleOfflineRequest(request) {
   );
 }
 
-// Fetch event listener to intercept API calls
+/**
+ * Fetch event listener to intercept requests to specific API URLs.
+ * If offline, handles the request via handleOfflineRequest().
+ */
 self.addEventListener("fetch", (event) => {
   if (API_URLS.some((url) => event.request.url.includes(url))) {
     if (!navigator.onLine) {
-      // Directly detect offline state and store the request
+      // Respond with offline handler if not connected
       event.respondWith(handleOfflineRequest(event.request));
     }
   }

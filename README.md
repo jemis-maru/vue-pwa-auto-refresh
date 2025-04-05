@@ -1,5 +1,45 @@
-# Vue 3 + Vite
+# Vue 3 + PWA
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+This guide provides step-by-step instructions to set up and run the project.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+## 📦 **Prerequisites**
+
+Ensure the following are installed on your system:
+
+- **Node.js** (v18 or higher)
+- **NPM** (v10 or higher)
+
+## 🚀 **Setup Steps**
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/jemis-maru/vue-pwa-auto-refresh.git
+```
+
+### 2. Initial Set Up
+
+```bash
+cd vue-pwa-auto-refresh
+npm install
+```
+
+### 3. Start the development server
+
+```bash
+npm run dev
+```
+
+### 4. Build for production
+
+```bash
+npm run build
+```
+
+### 5. Preview production build
+
+```bash
+npm run preview
+```
+
+### Happy Coding! 🚀
